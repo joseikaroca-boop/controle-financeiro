@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Controle Financeiro</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#16a34a">
+
+  <style>
+    body { font-family: Arial, sans-serif; margin:0; padding:16px; background:#f4f6f8; }
+    h1,h2,h3 { text-align:center; }
+    .grid { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; margin-bottom:16px; }
+    .card { background:#fff; border-radius:14px; padding:16px; box-shadow:0 4px 10px rgba(0,0,0,.08); }
+    .card.green { background:#dcfce7; }
+    .card.red { background:#fee2e2; }
+    input,select,button { width:100%; padding:10px; margin-top:8px; border-radius:8px; border:1px solid #ccc; }
+    button { background:#2563eb; color:#fff; font-weight:bold; border:none; cursor:pointer; }
+    button.danger { background:#dc2626; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    td,th { padding:6px; border-bottom:1px solid #ddd; text-align:center; }
+    .gain { color:#16a34a; font-weight:bold; }
+    .expense { color:#dc2626; font-weight:bold; }
+
+    .donut-wrapper { display:flex; justify-content:center; margin-top:16px; }
+    .donut { width:220px; height:220px; border-radius:50%; position:relative; }
+    .donut::after { content:""; width:140px; height:140px; background:#fff; border-radius:50%; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); }
+    .donut-center { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-weight:bold; text-align:center; z-index:2; }
+
+    .legend { margin-top:12px; background:#ecfeff; padding:10px; border-radius:10px; }
+    .legend-item { display:flex; justify-content:space-between; font-size:14px; margin-bottom:4px; }
+
+    .progress { height:8px; background:#e5e7eb; border-radius:6px; overflow:hidden; margin-top:4px; }
+    .progress div { height:100%; }
+
+    body.mobile .grid { grid-template-columns: 1fr; }
+    body.desktop .grid { grid-template-columns: repeat(3,1fr); }
+  </style>
+</head>
+<body>
+
+<h1>💰 Controle Financeiro</h1>
+
+<div class="grid">
+  <div class="card green"><h3>Total Ganhos</h3><h2 id="totalGain">R$ 0,00</h2></div>
+  <div class="card red"><h3>Total Gastos</h3><h2 id="totalExpense">R$ 0,00</h2></div>
+  <div class="card"><h3>Saldo</h3><h2 id="balance">R$ 0,00</h2></div>
+</div>
+
+<div class="card">
+  <h2>Adicionar Ganho ou Gasto</h2>
+  <input id="desc" placeholder="Descrição" />
+  <input id="value" type="number" placeholder="Valor" />
+  <select id="type" onchange="toggleLimit()">
+    <option value="gain">Ganho</option>
+    <option value="expense">Gasto</option>
+  </select>
+  <select id="category">
+    <option>Salário</option>
+    <option>Lazer</option>
+    <option>Alimentação</option>
+    <option>Investimentos</option>
+    <option>Contas</option>
+    <option>Gastos Aleatórios</option>
+  </select>
+  <input id="limit" type="number" placeholder="Limite da categoria (R$)" style="display:none" />
+  <button onclick="addItem()">Adicionar</button>
+</div>
+
+<div class="card green">
+  <h2>📈 Ganhos</h2>
+  <table><tbody id="gainList"></tbody></table>
+</div>
+
+<div class="card red">
+  <h2>📉 Gastos</h2>
+  <table><tbody id="expenseList"></tbody></table>
+</div>
+
+<div class="card">
+  <h2>📊 Gastos por Categoria</h2>
+  <div class="donut-wrapper">
+    <div class="donut" id="donut"><div class="donut-center" id="donutCenter"></div></div>
+  </div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<script>
+let salary=0, history=[], expenses={}, limits={};
+
+const descEl=desc, valueEl=value, typeEl=type, categoryEl=category, limitEl=limit;
+const gainList=document.getElementById('gainList');
+const expenseList=document.getElementById('expenseList');
+const donut=document.getElementById('donut');
+const donutCenter=document.getElementById('donutCenter');
+const legend=document.getElementById('legend');
+const totalGain=document.getElementById('totalGain');
+const totalExpense=document.getElementById('totalExpense');
+const balance=document.getElementById('balance');
+
+const colors={Lazer:'#3b82f6',Alimentação:'#22c55e',Investimentos:'#f59e0b',Contas:'#ef4444','Gastos Aleatórios':'#8b5cf6','Salário':'#16a34a'};
+
+function toggleLimit(){ limitEl.style.display=typeEl.value==='expense'?'block':'none'; }
+
+function addItem(){
+  const item={id:Date.now(),desc:descEl.value,value:+valueEl.value,type:typeEl.value,cat:categoryEl.value};
+  if(!item.desc||!item.value) return;
+  history.push(item);
+  if(item.type==='gain') salary+=item.value;
+  else{ expenses[item.cat]=(expenses[item.cat]||0)+item.value; if(limitEl.value) limits[item.cat]=+limitEl.value; }
+  save(); render(); clearForm();
+}
+
+function render(){
+  gainList.innerHTML=''; expenseList.innerHTML='';
+  let totalExp=0;
+  history.forEach(i=>{
+    if(i.type==='gain') gainList.innerHTML+=`<tr><td>${i.desc}</td><td class='gain'>R$ ${i.value.toFixed(2)}</td><td><button onclick="removeItem(${i.id})">✏️</button></td></tr>`;
+    else{ totalExp+=i.value; expenseList.innerHTML+=`<tr><td>${i.desc}</td><td>${i.cat}</td><td class='expense'>R$ ${i.value.toFixed(2)}</td><td><button onclick="removeItem(${i.id})">✏️</button></td></tr>`; }
+  });
+  totalGain.innerText=`R$ ${salary.toFixed(2)}`;
+  totalExpense.innerText=`R$ ${totalExp.toFixed(2)}`;
+  balance.innerText=`R$ ${(salary-totalExp).toFixed(2)}`;
+
+  let angle=0,grad=[],html='';
+  for(let c in expenses){
+    const part=totalExp?expenses[c]/totalExp*360:0;
+    grad.push(`${colors[c]} ${angle}deg ${angle+part}deg`);
+    const perc=((expenses[c]/salary)*100||0).toFixed(1);
+    const limit=limits[c]||0;
+    const bar=limit?`<div class='progress'><div style='width:${Math.min(expenses[c]/limit*100,100)}%;background:${expenses[c]>limit?'#dc2626':'#16a34a'}'></div></div>`:'';
+    html+=`<div class='legend-item'><span>${c}</span><span>${perc}%</span></div>${bar}`;
+    angle+=part;
+  }
+  donut.style.background=grad.length?`conic-gradient(${grad.join(',')})`:'#e5e7eb';
+  donutCenter.innerHTML=`Saldo<br>R$ ${(salary-totalExp).toFixed(2)}`;
+  legend.innerHTML=html;
+}
+
+function removeItem(id){
+  const i=history.find(x=>x.id===id); if(!i) return;
+  if(i.type==='gain') salary-=i.value; else expenses[i.cat]-=i.value;
+  history=history.filter(x=>x.id!==id);
+  save(); render();
+}
+
+function clearForm(){ descEl.value=''; valueEl.value=''; limitEl.value=''; }
+function save(){ localStorage.setItem('finance',JSON.stringify({salary,history,expenses,limits})); }
+function load(){ const d=JSON.parse(localStorage.getItem('finance')||'{}'); salary=d.salary||0; history=d.history||[]; expenses=d.expenses||{}; limits=d.limits||{}; render(); }
+
+if(window.innerWidth<768) document.body.classList.add('mobile'); else document.body.classList.add('desktop');
+load();
+</script>
+
+</body>
+</html>
